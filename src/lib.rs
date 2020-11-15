@@ -10,6 +10,8 @@ use crossbeam::channel::Receiver;
 use crossbeam::channel::RecvTimeoutError;
 use crossbeam::channel::SendTimeoutError;
 use crossbeam::channel::Sender;
+use crossbeam::channel::TryRecvError;
+use crossbeam::channel::TrySendError;
 use pyo3::exceptions::PyValueError;
 use pyo3::once_cell::GILOnceCell;
 use pyo3::types::PyType;
@@ -57,8 +59,18 @@ impl Queue {
                 item: PyObject,
                 timeout: Option<Duration>,
         ) -> PyResult<()> {
-                let end = timeout.map(|timeout| Instant::now() + timeout);
                 let mut item = item;
+
+                // first try non-blocking in order to prevent paying the cost of releasing and re-acquiring the GIL
+                let result = self.sender.try_send(item);
+
+                match result {
+                        Ok(_) => return Ok(()),
+                        Err(TrySendError::Disconnected(_)) => panic!("BUG"),
+                        Err(TrySendError::Full(item_)) => item = item_,
+                }
+
+                let end = timeout.map(|timeout| Instant::now() + timeout);
                 loop {
                         let next_check_time = Instant::now() + TIME_BETWEEN_CHECKING_SIGNALS;
                         let next_deadline =
@@ -85,6 +97,15 @@ impl Queue {
         }
 
         fn recv_timeout(&self, py: Python, timeout: Option<Duration>) -> PyResult<PyObject> {
+                // first try non-blocking in order to prevent paying the cost of releasing and re-acquiring the GIL
+                let result = self.receiver.try_recv();
+
+                match result {
+                        Ok(item) => return Ok(item),
+                        Err(TryRecvError::Disconnected) => panic!("BUG"),
+                        Err(TryRecvError::Empty) => (),
+                }
+
                 let end = timeout.map(|timeout| Instant::now() + timeout);
                 loop {
                         let next_check_time = Instant::now() + TIME_BETWEEN_CHECKING_SIGNALS;
