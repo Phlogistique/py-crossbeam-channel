@@ -102,6 +102,15 @@ def put_backpressure_contention(queue_class):
     for t in ts:
         t.join()
 
+def put_and_get_backpressure_contention(queue_class):
+    q = queue_class(1)
+    ts = [threading.Thread(target=put_100_items, args=(q,)) for i in range(100)] + [threading.Thread(target=get_100_items, args=(q,)) for i in range(100)]
+    for t in ts:
+        t.start()
+
+    for t in ts:
+        t.join()
+
 def single_thread_perf(queue_class):
     q = queue_class()
     for i in range(100*100):
@@ -109,6 +118,15 @@ def single_thread_perf(queue_class):
     for _ in range(100*100):
         q.get()
 
+def many_queues(queue_class):
+    qs = [queue_class() for _ in range(100)]
+    ts = [threading.Thread(target=put_100_items, args=(q,)) for q in qs] + [threading.Thread(target=get_100_items, args=(q,)) for q in qs]
+
+    for t in ts:
+        t.start()
+
+    for t in ts:
+        t.join()
 
 import py_crossbeam_channel
 import queue
@@ -128,6 +146,9 @@ def test_put_and_get_contention(queue_class, benchmark):
 @pytest.mark.parametrize("queue_class", [py_crossbeam_channel.Queue, queue.Queue], ids=["crossbeam", "queue.Queue"])
 def test_put_backpressure_contention(queue_class, benchmark):
     benchmark(put_backpressure_contention, queue_class)
+@pytest.mark.parametrize("queue_class", [py_crossbeam_channel.Queue, queue.Queue], ids=["crossbeam", "queue.Queue"])
+def test_put_and_get_backpressure_contention(queue_class, benchmark):
+    benchmark(put_and_get_backpressure_contention, queue_class)
 @pytest.mark.parametrize("queue_class", [py_crossbeam_channel.Queue, queue.Queue, queue.SimpleQueue], ids=["crossbeam", "queue.Queue", "queue.SimpleQueue"])
 def test_put_nowait_contention(queue_class, benchmark):
     benchmark(put_nowait_contention, queue_class)
@@ -137,3 +158,6 @@ def test_get_nowait_contention(queue_class, benchmark):
 @pytest.mark.parametrize("queue_class", [py_crossbeam_channel.Queue, queue.Queue, queue.SimpleQueue], ids=["crossbeam", "queue.Queue", "queue.SimpleQueue"])
 def test_put_and_get_nowait_contention(queue_class, benchmark):
     benchmark(put_and_get_nowait_contention, queue_class)
+@pytest.mark.parametrize("queue_class", [py_crossbeam_channel.Queue, queue.Queue, queue.SimpleQueue], ids=["crossbeam", "queue.Queue", "queue.SimpleQueue"])
+def test_many_queues(queue_class, benchmark):
+    benchmark(many_queues, queue_class)
